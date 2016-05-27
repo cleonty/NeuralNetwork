@@ -1,4 +1,4 @@
-(function (console, module, angular, document) {
+(function (console, module, angular, document, Math, trace) {
   function DataLoader() {
     this.labelBuffer = new ArrayBuffer();
     this.imageBuffer = new ArrayBuffer();
@@ -73,7 +73,9 @@
     this.height = height;
     this.label = label;
     this.image = imageData;
-    console.log("image %dx%d pixels label %s", width, height, label);
+    if (trace > 1) {
+      console.log("image %dx%d pixels label %s", width, height, label);
+    }
   }
 
   NumberImage.prototype.createElement = function () {
@@ -103,15 +105,60 @@
     return canvasAngularElement;
   };
 
+  function NeuralNetwork(inputLayerSize, hiddenLayerSize, outputLayerSize) {
+    this.inputLayer = new Layer(inputLayerSize);
+    this.hiddenLayer = new Layer(hiddenLayerSize);
+    this.outputLayer = new Layer(outputLayerSize);
+    
+    this.inputLayer.connectTo(this.hiddenLayer);
+    this.hiddenLayer.connectTo(this.outputLayer);
+    console.log(this);
+  }
+
+  function Layer(size) {
+    this.size = size;
+    this.biases;
+    this.weights;
+    this.nextLayer;
+    this.previousLayer;
+  }
+
+  Layer.prototype.initBiases = function () {
+    this.biases = new Array(this.size);
+    for (var i = 0; i < this.size; i++) {
+      this.biases[i] = Math.random() * 0.2 - 0.1;
+    }
+  };
+  
+  Layer.prototype.connectTo = function(nextLayer) {
+    this.nextLayer = nextLayer;
+    nextLayer.previousLayer = this;
+    nextLayer.initBiases();
+    nextLayer.initWeights();
+  };
+  
+  Layer.prototype.initWeights = function () {
+    var previousLayerSize = this.previousLayer.size;
+    var weights = new Array(this.size);
+    for (var i = 0; i < this.size; i++) {
+      weights[i] = new Array(previousLayerSize);
+      for (var j = 0; j < previousLayerSize; j++) {
+        weights[i][j] = Math.random() * 0.2 - 0.1;
+      }
+    }
+    this.weights = weights;
+  };
+
   var dataLoader = new DataLoader();
   dataLoader.loadLabelsAndImages(function () {
     var imageCount = dataLoader.getImageCount();
-    for (var i = 0; i < 5000; i++) {
+    for (var i = 0; i < 50; i++) {
       var image = dataLoader.getImage(i);
       var canvasAngularElement = image.createElement();
       angular.element(document.body).append(canvasAngularElement);
     }
   });
-})(console, angular.module('neuralNetworkApp', []), angular, document);
+  var net = new NeuralNetwork(3, 3, 3);
+})(console, angular.module('neuralNetworkApp', []), angular, document, Math, 1);
 
 
