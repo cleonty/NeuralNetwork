@@ -421,11 +421,9 @@
   dataLoader.loadLabelsAndImages(function () {
     var imageCount = dataLoader.getImageCount();
     var traningData = [];
-    var n = 600;
+    var n = 5000;
     for (var i = 0; i < n; i++) {
       var image = dataLoader.getImage(i);
-      var canvasAngularElement = image.createElement();
-      angular.element(document.body).append(canvasAngularElement);
       var input = image.toArray();
       var output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
       output[image.label] = 1;
@@ -433,7 +431,7 @@
     }
     //console.table(traningData);
     var net = new NeuralNetwork(input.length, 30, 10);
-    net.SGD(traningData, 50, 10, 3.0);
+    net.SGD(traningData, 30, 10, 0.7);
     var passed = 0, failed = 0, total = 0;
     for (var i = 0; i < n; i++) {
       var image = dataLoader.getImage(i);
@@ -443,6 +441,8 @@
       if (success) {
         passed++;
       } else {
+        var canvasAngularElement = image.createElement();
+        angular.element(document.body).append(canvasAngularElement);
         failed++;
       }
       total++;
@@ -460,7 +460,7 @@
       }
     }
     return maxElementIndex;
-  }
+  };
 
   Array.prototype.shuffle = function () {
     var len = this.length, randomIndex, i = 0;
@@ -474,34 +474,12 @@
     }
   };
 
-  Array.prototype.transpose = function () {
-    var rowCount = this.length;
-    var colCount = this[0].length;
-    var transposed = new Array(colCount);
-    for (var i = 0; i < colCount; i++) {
-      transposed[i] = new Array(rowCount);
-      for (var j = 0; j < rowCount; j++) {
-        transposed[i][j] = this[j][i];
-      }
-    }
-    return transposed;
-  };
-
-  function testShuffle() {
+  Array.prototype.testShuffle = function () {
     var arr = [1, 2, 3, 4, 5, 6, 7];
     arr.shuffle();
     console.table([arr]);
-  }
+  };
 
-  function testTranspose() {
-    var arr = [
-      [1, 2],
-      [4, 5],
-      [7, 8]
-    ];
-    var transposed = arr.transpose();
-    console.table(transposed);
-  }
 })(console, angular.module('neuralNetworkApp', []), angular, document, Math, 1);
 
 
