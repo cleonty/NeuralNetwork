@@ -7,8 +7,8 @@
 
   DataLoader.prototype.loadLabelsAndImages = function (onReadyCallback) {
     this.onReadyCallback = onReadyCallback;
-    this.loadData("/NeuralNetwork/data/train-images.idx3-ubyte", this.onLoadImages, this.onCompleteCallback);
-    this.loadData("/NeuralNetwork/data/train-labels.idx1-ubyte", this.onLoadLabels, this.onCompleteCallback);
+    this.loadData("data/train-images.idx3-ubyte", this.onLoadImages, this.onCompleteCallback);
+    this.loadData("data/train-labels.idx1-ubyte", this.onLoadLabels, this.onCompleteCallback);
   };
 
   DataLoader.prototype.onCompleteCallback = function () {
@@ -185,11 +185,6 @@
   };
 
   NeuralNetwork.prototype.backprop = function (x, y) {
-//    this.hiddenLayer.initNablaBiases();
-//    this.hiddenLayer.initNablaWeights();
-//    this.outputLayer.initNablaBiases();
-//    this.outputLayer.initNablaWeights();
-
     this.feedForward(x);
 
     var delta = this.outputLayer.mul(this.outputLayer.costDerivative(this.outputLayer.output, y), this.outputLayer.sigmoidPrime(this.outputLayer.z));
@@ -198,7 +193,6 @@
     }
 
     var sp = this.hiddenLayer.sigmoidPrime(this.hiddenLayer.z);
-    //var delta = this.hiddenLayer.sum(this.hiddenLayer.dot(this.outputLayer.weights, delta), sp);
     var delta2 = [];
     for (var i = 0; i < this.outputLayer.weights.length; i++) {
       var a = this.hiddenLayer.sum(this.hiddenLayer.mulToScalar(this.outputLayer.weights[i], delta[i]), sp);
