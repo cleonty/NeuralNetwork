@@ -3,6 +3,13 @@
     this.labelBuffer = new ArrayBuffer();
     this.imageBuffer = new ArrayBuffer();
     this.onReadyCallback = function () {};
+    this.canvasAngularElement;
+    this.canvas;
+    this.context;
+    this.net;
+    this.traceLevel = 0;
+    this.progressElement = this.createProgress();
+    this.progressCounter = 0;
   }
 
   DataLoader.prototype.loadLabelsAndImages = function (onReadyCallback) {
@@ -10,14 +17,12 @@
     this.loadData("data/train-images.idx3-ubyte", this.onLoadImages, this.onCompleteCallback);
     this.loadData("data/train-labels.idx1-ubyte", this.onLoadLabels, this.onCompleteCallback);
   };
-
   DataLoader.prototype.onCompleteCallback = function () {
     if (this.labelBuffer.byteLength > 0 && this.imageBuffer.byteLength > 0) {
       this.onReadyCallback.call(null);
       console.log("All data loaded");
     }
   };
-
   DataLoader.prototype.loadData = function (url, callback, onLoadCallback) {
     var that = this;
     var xhr = new XMLHttpRequest();
@@ -29,9 +34,6 @@
       var dv = new DataView(xhr.response);
       var magic = dv.getUint32(0);
       var itemCount = dv.getUint32(4);
-      for (var i = 8; i < 16; i++) {
-        //console.log(dv.getUint8(i));
-      }
       console.log("magic %d count %d", magic, itemCount);
       callback.call(that, xhr.response);
       onLoadCallback.call(that);
@@ -41,21 +43,17 @@
     };
     xhr.send();
   };
-
   DataLoader.prototype.onLoadLabels = function (arrayBuffer) {
     this.labelBuffer = arrayBuffer;
   };
-
   DataLoader.prototype.onLoadImages = function (arrayBuffer) {
     this.imageBuffer = arrayBuffer;
   };
-
   DataLoader.prototype.getImageCount = function () {
     var dataView = new DataView(this.labelBuffer);
     var imageCount = dataView.getUint32(4);
     return imageCount;
   };
-
   DataLoader.prototype.getImage = function (number) {
     var labelsDataView = new DataView(this.labelBuffer);
     var label = labelsDataView.getUint8(8 + number);
@@ -67,7 +65,93 @@
     var imageData = new Uint8Array(this.imageBuffer, firstImageStart + size * number, size);
     return new NumberImage(width, height, label, imageData);
   };
-
+  DataLoader.prototype.createTestCanvas = function () {
+    var dataLoader = this;
+    var htmlLines = [
+      '<canvas width="28" height="28" style="border: 1px solid black"></canvas>'
+    ];
+    var buttonHtmlLines = [
+      '<div id="number"></div>',
+      '<div><button type="button">Clear</button></div>'
+    ];
+    var canvasAngularElement = angular.element(htmlLines.join(""));
+    var buttonAngularElement = angular.element(buttonHtmlLines.join(""));
+    var canvas = canvasAngularElement[0];
+    var context = canvas.getContext('2d');
+    this.canvasAngularElement = canvasAngularElement;
+    this.canvas = canvasAngularElement[0];
+    this.context = context;
+    var startDrawing = false;
+    function ensurePos(event) {
+      var x = event.offsetX, y = event.offsetY;
+      if (x >= 0 && x < 28 && y >= 0 && y < 28) {
+        return true;
+      }
+      return false;
+    }
+    canvasAngularElement.on('mousedown', function (event) {
+      if (ensurePos(event)) {
+        context.beginPath();
+        context.lineWidth = 3;
+        context.moveTo(event.offsetX, event.offsetY);
+        startDrawing = true;
+      }
+    });
+    canvasAngularElement.on('mousemove', function (event) {
+      if (startDrawing && ensurePos(event)) {
+        context.lineTo(event.offsetX, event.offsetY);
+        context.stroke();
+        startDrawing = true;
+      }
+    });
+    canvasAngularElement.on('mouseup', function (event) {
+      if (startDrawing && ensurePos(event)) {
+        context.lineTo(event.offsetX, event.offsetY);
+        context.stroke();
+        startDrawing = false;
+        dataLoader.testImage();
+      }
+    });
+    buttonAngularElement.on('click', function (event) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+    });
+    angular.element(document.body).append(canvasAngularElement);
+    angular.element(document.body).append(buttonAngularElement);
+  };
+  DataLoader.prototype.testImage = function () {
+    var context = this.context;
+    var image = context.getImageData(0, 0, 28, 28);
+    var data = image.data;
+    var input = new Array(28 * 28);
+    for (var i = 0; i < 28 * 28; i++) {
+      var r = data[i * 4 + 0];
+      var g = data[i * 4 + 1];
+      var b = data[i * 4 + 2];
+      var a = data[i * 4 + 3];
+      //console.log(r, g, b, a);
+      input[i] = a;
+    }
+    var output = this.net.feedForward(input);
+    var actual = output.indexOfMaxElement();
+    document.getElementById("number").innerHTML = actual;
+    console.log("recognized as %s", actual);
+  };
+  DataLoader.prototype.createProgress = function () {
+    var progressDiv = document.createElement('div');
+    document.body.appendChild(progressDiv);
+    return progressDiv;
+  };
+  DataLoader.prototype.progressStep = function () {
+    var animationSteps = "/-|\\";
+    var animationLen = animationSteps.length;
+    var value = this.progressCounter % animationLen;
+    this.progressElement.innerHTML = animationSteps[value];
+    this.progressCounter++;
+  };
+  DataLoader.prototype.progressFinish = function () {
+    //document.body.removeChild(this.progressElement);
+    this.progressElement = null;
+  };
   function NumberImage(width, height, label, imageData) {
     this.width = width;
     this.height = height;
@@ -104,7 +188,6 @@
     context.putImageData(id, 0, 0);
     return canvasAngularElement;
   };
-
   NumberImage.prototype.toArray = function () {
     var len = this.image.byteLength, i, arr = new Array(len);
     for (i = 0; i < len; i++) {
@@ -112,12 +195,10 @@
     }
     return arr;
   };
-
   function NeuralNetwork(inputLayerSize, hiddenLayerSize, outputLayerSize) {
     this.inputLayer = new Layer(inputLayerSize);
     this.hiddenLayer = new Layer(hiddenLayerSize);
     this.outputLayer = new Layer(outputLayerSize);
-
     this.inputLayer.connectTo(this.hiddenLayer);
     this.hiddenLayer.connectTo(this.outputLayer);
     this.trace = false;
@@ -141,8 +222,7 @@
     }
     return a;
   };
-
-  NeuralNetwork.prototype.SGD = function (trainingData, epochs, miniBatchSize, eta, testDataOrUndefined) {
+  NeuralNetwork.prototype.SGD = function (dataLoader, trainingData, epochs, miniBatchSize, eta, testDataOrUndefined) {
     var i, j, nTest, n;
     if (testDataOrUndefined) {
       nTest = testDataOrUndefined.length;
@@ -157,6 +237,7 @@
       }
       for (j = 0; j < miniBatches.length; j++) {
         this.updateMiniBatch(miniBatches[j], eta);
+        dataLoader.progressStep();
       }
       if (testDataOrUndefined) {
         console.log("Epoch %d: %d / %d", i, this.evaluate(testDataOrUndefined), nTest);
@@ -166,7 +247,6 @@
       console.groupEnd('Epoch %d', i);
     }
   };
-
   NeuralNetwork.prototype.updateMiniBatch = function (miniBatch, eta) {
     console.groupCollapsed('minibatch');
     this.hiddenLayer.initNablaBiases();
@@ -183,10 +263,8 @@
     this.outputLayer.updateWeights(miniBatchSize, eta);
     console.groupEnd('minibatch');
   };
-
   NeuralNetwork.prototype.backprop = function (x, y) {
     this.feedForward(x);
-
     var delta = this.outputLayer.mul(this.outputLayer.costDerivative(this.outputLayer.output, y), this.outputLayer.sigmoidPrime(this.outputLayer.z));
     for (var i = 0; i < delta.length; i++) {
       this.outputLayer.nablaWeights[i] = this.outputLayer.sum(this.outputLayer.nablaWeights[i], this.outputLayer.mulToScalar(this.hiddenLayer.output, delta[i]));
@@ -207,11 +285,9 @@
       this.hiddenLayer.nablaWeights[i] = this.hiddenLayer.sum(this.hiddenLayer.nablaWeights[i], this.hiddenLayer.mulToScalar(this.inputLayer.activation, delta2[i]));
     }
   };
-
   NeuralNetwork.prototype.evaluate = function (testData) {
     return 1;
   };
-
   function Layer(size) {
     this.size = size;
     this.biases;
@@ -231,7 +307,6 @@
       this.biases[i] = this.random();
     }
   };
-
   Layer.prototype.initNablaBiases = function () {
     var nablaBiases;
     nablaBiases = new Array(this.size);
@@ -240,14 +315,12 @@
     }
     this.nablaBiases = nablaBiases;
   };
-
   Layer.prototype.connectTo = function (nextLayer) {
     this.nextLayer = nextLayer;
     nextLayer.previousLayer = this;
     nextLayer.initBiases();
     nextLayer.initWeights();
   };
-
   Layer.prototype.initWeights = function () {
     var previousLayerSize = this.previousLayer.size;
     var weights = new Array(this.size);
@@ -259,7 +332,6 @@
     }
     this.weights = weights;
   };
-
   Layer.prototype.initNablaWeights = function () {
     var nablaWeights;
     if (this.weights) {
@@ -274,18 +346,13 @@
     }
     this.nablaWeights = nablaWeights;
   };
-
   Layer.prototype.updateWeights = function (miniBatchSize, eta) {
     var weights = this.weights, len = weights.length, nablaWeights = this.nablaWeights, factor = eta / miniBatchSize;
-
     for (var i = 0; i < len; i++) {
-      //weights[i] = (weights[i] - eta / miniBatchSize) * nablaWeights[i];
       weights[i] = this.sub(weights[i], this.mulToScalar(nablaWeights[i], factor))
-      //weights[i] = (weights[i] - eta / miniBatchSize) * nablaWeights[i];
     }
     this.weights = weights;
   };
-
   Layer.prototype.updateBiases = function (miniBatchSize, eta) {
     var biases = this.biases, len = biases.length, nablaBiases = this.nablaBiases;
     for (var i = 0; i < len; i++) {
@@ -293,11 +360,9 @@
     }
     this.biases = biases;
   };
-
   Layer.prototype.random = function () {
     return Math.random() * 0.2 - 0.1;
   };
-
   Layer.prototype.activate = function (a) {
     var result;
     this.activation = a;
@@ -309,7 +374,6 @@
     }
     return result;
   };
-
   Layer.prototype.wab = function (a) {
     var size = this.size;
     var result = new Array(size);
@@ -318,7 +382,6 @@
     }
     return this.sum(result, this.biases);
   };
-
   Layer.prototype.dot = function (a, b) {
     var length = a.length,
             i = 0,
@@ -328,7 +391,6 @@
     }
     return result;
   };
-
   Layer.prototype.dot2 = function (a, b) {
     var length = a.length,
             i = 0,
@@ -338,7 +400,6 @@
     }
     return result;
   };
-
   Layer.prototype.sum = function (a, b) {
     var length = a.length,
             i = 0,
@@ -348,7 +409,6 @@
     }
     return result;
   };
-
   Layer.prototype.mul = function (a, b) {
     var length = a.length,
             i = 0,
@@ -358,7 +418,6 @@
     }
     return result;
   };
-
   Layer.prototype.mulToScalar = function (a, b) {
     var length = a.length,
             i = 0,
@@ -368,7 +427,6 @@
     }
     return result;
   };
-
   Layer.prototype.sub = function (a, b) {
     var length = a.length,
             i = 0,
@@ -378,11 +436,9 @@
     }
     return result;
   };
-
   Layer.prototype.costDerivative = function (a, b) {
     return this.sub(a, b);
   };
-
   Layer.prototype.sigmoid = function (z) {
     var result;
     if (Array.isArray(z)) {
@@ -396,7 +452,6 @@
     }
     return result;
   };
-
   Layer.prototype.sigmoidPrime = function (z) {
     var result;
     if (Array.isArray(z)) {
@@ -411,40 +466,6 @@
     return result;
   };
 
-  var dataLoader = new DataLoader();
-  dataLoader.loadLabelsAndImages(function () {
-    var imageCount = dataLoader.getImageCount();
-    var traningData = [];
-    var n = 5000;
-    for (var i = 0; i < n; i++) {
-      var image = dataLoader.getImage(i);
-      var input = image.toArray();
-      var output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      output[image.label] = 1;
-      traningData.push([input, output]);
-    }
-    //console.table(traningData);
-    var net = new NeuralNetwork(input.length, 30, 10);
-    net.SGD(traningData, 30, 10, 0.7);
-    var passed = 0, failed = 0, total = 0;
-    for (var i = 0; i < n; i++) {
-      var image = dataLoader.getImage(i);
-      var input = image.toArray();
-      var output = net.feedForward(input);
-      var expected = image.label, actual = output.indexOfMaxElement(), success = expected === actual;
-      if (success) {
-        passed++;
-      } else {
-        var canvasAngularElement = image.createElement();
-        angular.element(document.body).append(canvasAngularElement);
-        failed++;
-      }
-      total++;
-      console.log("expected %d, actual %d, success %s", expected, actual, success);
-    }
-    console.log("passed %d, failed %d, total %d", passed, failed, total);
-  });
-
   Array.prototype.indexOfMaxElement = function () {
     var len = this.length, maxElementIndex = 0, maxElement = this[maxElementIndex], i;
     for (var i = 1; i < len; i++) {
@@ -455,7 +476,6 @@
     }
     return maxElementIndex;
   };
-
   Array.prototype.shuffle = function () {
     var len = this.length, randomIndex, i = 0;
     for (var i = 0; i < len; i++) {
@@ -467,13 +487,56 @@
       }
     }
   };
-
   Array.prototype.testShuffle = function () {
     var arr = [1, 2, 3, 4, 5, 6, 7];
     arr.shuffle();
     console.table([arr]);
   };
-
+  angular.element(document).ready(function () {
+    var dataLoader = new DataLoader();
+    dataLoader.loadLabelsAndImages(function () {
+      var showBadImages = false;
+      var imageCount = dataLoader.getImageCount();
+      var traningData = [];
+      var n = 5000;
+      for (var i = 0; i < n; i++) {
+        dataLoader.progressStep();
+        var image = dataLoader.getImage(i);
+        var input = image.toArray();
+        var output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        output[image.label] = 1;
+        traningData.push([input, output]);
+      }
+      //console.table(traningData);
+      var net = new NeuralNetwork(input.length, 30, 10);
+      dataLoader.net = net;
+      net.SGD(dataLoader, traningData, 3, 10, 3.0);
+      var passed = 0, failed = 0, total = 0;
+      for (var i = 0; i < n; i++) {
+        var image = dataLoader.getImage(i);
+        var input = image.toArray();
+        var output = net.feedForward(input);
+        var expected = image.label, actual = output.indexOfMaxElement(), success = expected === actual;
+        if (success) {
+          passed++;
+        } else {
+          if (showBadImages) {
+            var canvasAngularElement = image.createElement();
+            angular.element(document.body).append(canvasAngularElement);
+          }
+          failed++;
+        }
+        total++;
+        if (dataLoader.traceLevel) {
+          console.log("expected %d, actual %d, success %s", expected, actual, success);
+        }
+        dataLoader.progressStep();
+      }
+      console.log("passed %d, failed %d, total %d", passed, failed, total);
+      dataLoader.progressFinish();
+      dataLoader.createTestCanvas();
+    });
+  });
 })(console, angular.module('neuralNetworkApp', []), angular, document, Math, 1);
 
 
